@@ -1,0 +1,33 @@
+name: Diagnostic boot (Infomaniak)
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'release.yml run whose image to boot'
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - run: pip install -q python-openstackclient
+      - name: Fetch the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "${{ inputs.run_id }}" -R "${{ github.repository }}" -n "$(gh api repos/${{ github.repository }}/actions/runs/${{ inputs.run_id }}/artifacts -q '[.artifacts[]|select(.name|startswith("flatcar"))][0].name')" -D "$RUNNER_TEMP/art"
+          echo "IMAGE_FILE=$(ls $RUNNER_TEMP/art/*.qcow2)" >> "$GITHUB_ENV"
+      - name: Boot and diagnose
+        env:
+          OS_AUTH_URL: ${{ secrets.OS_AUTH_URL }}
+          OS_REGION_NAME: dc4-a
+          OS_AUTH_TYPE: v3applicationcredential
+          OS_APPLICATION_CREDENTIAL_ID: ${{ secrets.OS_APPLICATION_CREDENTIAL_ID }}
+          OS_APPLICATION_CREDENTIAL_SECRET: ${{ secrets.OS_APPLICATION_CREDENTIAL_SECRET }}
+          OS_IDENTITY_API_VERSION: '3'
+          OS_INTERFACE: public
+        run: tests/diag.sh
